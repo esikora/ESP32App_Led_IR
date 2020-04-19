@@ -1,7 +1,8 @@
 /**
     ESP32App_Led_IR.ino:
-    This application has been developed to run on an M5Stack Atom Lite ESP32 development board.
-    It allows the user to control a Neopixel led strip using an IR remote control.
+    This application has been developed to run on an M5Stack Atom Lite
+    ESP32 development board. It displays light effects on an led strip
+    which can be adjusted using an infrared remote control.
         
     Copyright (C) 2020 by Ernst Sikora
     
