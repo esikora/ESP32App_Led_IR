@@ -25,4 +25,6 @@ Libraries installed (in Arduino IDE Library Manager):
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-Copyright 2020 © Ernst Sikora.
+See the [LICENSE.md](LICENSE.md) file for details.
+
+Copyright 2020 © Ernst Sikora
