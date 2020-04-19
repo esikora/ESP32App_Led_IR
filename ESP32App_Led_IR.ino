@@ -1,8 +1,33 @@
-#include <JC_Button.h> // Library: JC_Button, https://github.com/JChristensen/JC_Button
-#include <FastLED.h> // Library: FastLED, https://github.com/FastLED/FastLED
+/**
+    ESP32App_Led_IR.ino:
+    This application has been developed to run on an M5Stack Atom Lite ESP32 development board.
+    It allows the user to control a Neopixel led strip using an IR remote control.
+        
+    Copyright (C) 2020 by Ernst Sikora
+    
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+    
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+    
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
 
-#include <IRrecv.h> // Library: IRRemoteESP8266, https://github.com/crankyoldgit/IRremoteESP8266
-#include <IRremoteESP8266.h> // Library: IRRemoteESP8266, https://github.com/crankyoldgit/IRremoteESP8266
+// External library: JC_Button, https://github.com/JChristensen/JC_Button
+#include <JC_Button.h>
+
+// External library: FastLED, https://github.com/FastLED/FastLED
+#include <FastLED.h> 
+
+// External library: IRRemoteESP8266, https://github.com/crankyoldgit/IRremoteESP8266
+#include <IRrecv.h> 
+#include <IRremoteESP8266.h>
 
 // HW: Pin assignments
 const byte PIN_BUTTON = 39; // M5Stack Atom Lite: internal button
