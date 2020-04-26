@@ -4,18 +4,16 @@ This application has been developed to run on an M5Stack Atom Lite ESP32 develop
 
 ## Getting Started
 Development environment used for this application:
-- Arduino IDE (version 1.8.12)
+- Visual Studio Code (version 1.44.2)
+- PlatformIO IDE for VSCode
 
-Board definition package used (in Arduino IDE Board Manager):
-- esp32 (version 1.0.4)
+Platform and board:
+- ESP32 Pico
 
-Selected board:
-- ESP32 Pico Kit
-
-Libraries installed (in Arduino IDE Library Manager):
-- JC_Button (version 2.1.2)
-- FastLED (version 3.3.3)
-- IRRemoteESP8266 (version 2.7.5)
+Libraries used (see platformio.ini):
+- JC_Button
+- FastLED
+- IRRemoteESP8266
 
 ## Project Description
 
