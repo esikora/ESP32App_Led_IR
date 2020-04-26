@@ -1,5 +1,5 @@
 /**
-    ESP32App_Led_IR.ino:
+    ESP32App_Led_IR:
     This application has been developed to run on an M5Stack Atom Lite
     ESP32 development board. It displays light effects on an led strip
     which can be adjusted using an infrared remote control.
