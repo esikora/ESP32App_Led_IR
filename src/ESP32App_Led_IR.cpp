@@ -58,7 +58,7 @@ typedef struct LedSprite {
 } t_LedSprite;
 
 // Switch to receive debug messages via serial monitor
-const bool DEBUG_ON = false;
+const bool DEBUG_ON = true;
 
 // Status LED: color definitions
 const uint8_t COLOR_OFF[3] = {255, 0, 0}; // System state: OFF
@@ -101,15 +101,15 @@ const int RENDER_SPRITES_NUM_SPRITES_MAX = 10; // Maximum number of sprites
 const int TIME_CYCLE = 50; // ms
 
 // IR Commands (values depend on the remote control used)
-const uint64_t IR_ON_OFF         = 0xFF30CF; // Stand-By/ON
-const uint64_t IR_BRIGHTNESS_INC = 0xFFF00F; // Volume +
-const uint64_t IR_BRIGHTNESS_DEC = 0xFF708F; // Volume -
-const uint64_t IR_MODE_CHANGE    = 0xFF28D7; // Mode
-const uint64_t IR_PLAY_PAUSE     = 0xFFA857; // Play/Pause
-const uint64_t IR_SLOWER         = 0xFF10EF; // Slower
-const uint64_t IR_FASTER         = 0xFF6897; // Faster
-const uint64_t IR_LEFT           = 0xFFC03F; // Left
-const uint64_t IR_RIGHT          = 0xFFA05F; // Right
+const uint64_t IR_ON_OFF         = 0x20DF10EF; // Stand-By/ON
+const uint64_t IR_BRIGHTNESS_INC = 0x20DF00FF; // +
+const uint64_t IR_BRIGHTNESS_DEC = 0x20DF807F; // -
+const uint64_t IR_MODE_CHANGE    = 0x20DFAE51; // OK
+const uint64_t IR_PLAY_PAUSE     = 0x20DF0BF4; // Play
+const uint64_t IR_SLOWER         = 0x20DF5AA5; // Reverse
+const uint64_t IR_FASTER         = 0x20DFFD02; // Forward
+const uint64_t IR_LEFT           = 0x20DF04FB; // Previous
+const uint64_t IR_RIGHT          = 0x20DF6B94; // Right
 
 // IR receiver library parameters
 const uint16_t IR_BUFFER_SIZE = 1024;
