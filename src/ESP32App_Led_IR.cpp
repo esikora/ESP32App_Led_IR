@@ -34,18 +34,18 @@
 
 // HW: Pin assignments
 const byte PIN_BUTTON = 39; // M5Stack Atom Lite: internal button
-const byte PIN_LEDATOM = 27; // M5Stack Atom Lite: internel Neopixel LED
-const byte PIN_LEDSTRIP = 26; // M5SAtack Atom Lite: Grove connector GPIO pin (yellow cable) -> Neopixel LED strip
+const byte PIN_LEDATOM = 27; // M5Stack Atom Lite: internal LED
+const byte PIN_LEDSTRIP = 26; // M5SAtack Atom Lite: Grove connector GPIO pin (yellow cable) -> LED strip
 const byte PIN_IRRECV = 32; // M5SAtack Atom Lite: Grove connector GPIO pin (white cable) -> IR Receiver
 
-// HW: Neopixel LED strip number of leds
+// HW: LED strip, number of leds
 const byte NUM_LEDS = 29;
 
 // Type declarations
 enum State {OFF = 0, ON = 1, ECO = 2}; // Main system states
 typedef enum State t_State;
 
-enum LightMode {CONSTANT = 0, GRADIENT = 1, CHASE = 2, SPRITE = 3}; // Light effects for LED strip
+enum LightMode {CONSTANT = 0, GRADIENT = 1, CHASE = 2, SPRITE = 3, SPARKLE = 4}; // Light effects for LED strip
 typedef enum LightMode t_LightMode;
 
 // Simple sprite datatype used for light effects of type "SPRITE"
@@ -61,9 +61,9 @@ typedef struct LedSprite {
 const bool DEBUG_ON = true;
 
 // Status LED: color definitions
-const uint8_t COLOR_OFF[3] = {255, 0, 0}; // System state: OFF
-const uint8_t COLOR_ON[3]  = {0, 255, 0}; // System state: ON
-const uint8_t COLOR_ECO[3] = {0, 255, 0}; // System state: ECO
+const CRGB COLOR_OFF = CRGB(255, 0, 0); // System state: OFF
+const CRGB COLOR_ON  = CRGB(0, 255, 0); // System state: ON
+const CRGB COLOR_ECO = CRGB(0, 255, 0); // System state: ECO
 
 // Status LED and LED strip: Brightness constants
 const uint8_t BRIGHTNESS_OFF = 8;  // System state: OFF
@@ -95,7 +95,18 @@ const uint8_t RENDER_GRADIENT_NUM_CYCLES_HOLD_INIT = 4; // Default speed
 // Light effect "Sprite" constants
 const uint8_t RENDER_SPRITES_NUM_CYCLES_HOLD_INIT = 2; // Default speed
 const uint8_t RENDER_SPRITES_SPAWN_RATE = 30; // Probability in percent that a new sprite is spawned within one cycle
-const int RENDER_SPRITES_NUM_SPRITES_MAX = 10; // Maximum number of sprites
+const uint8_t RENDER_SPRITES_NUM_SPRITES_MAX = 10; // Maximum number of sprites
+
+// Light effect "Sparkle" constants
+const uint8_t RENDER_SPARKLE_NUM_CYCLES_HOLD_INIT = 2; // Default speed
+const uint8_t RENDER_SPARKLE_LIGHTNESS_STEP = 5; // Lightness step
+const uint8_t RENDER_SPARKLE_LIGHTNESS_MIN = 50; // Minimum lightness value
+// See FastLed color spectrum: https://github.com/FastLED/FastLED/wiki/FastLED-HSV-Colors
+const uint8_t SPARKLE_COLOR_HUE[4] = {160, 96, 0, 0}; // Blue, Green, Red, White
+const uint8_t SPARKLE_COLOR_SAT[4] = {255, 255, 255, 0}; // Blue, Green, Red, White
+
+// Light effect "Constant"
+const CRGB RENDER_CONSTANT_COLOR_DEFAULT = CRGB(255, 255, 255);
 
 // Time constant, i.e. time after which light effects are updated
 const int TIME_CYCLE = 50; // ms
@@ -105,11 +116,17 @@ const uint64_t IR_ON_OFF         = 0x20DF10EF; // Stand-By/ON
 const uint64_t IR_BRIGHTNESS_INC = 0x20DF00FF; // +
 const uint64_t IR_BRIGHTNESS_DEC = 0x20DF807F; // -
 const uint64_t IR_MODE_CHANGE    = 0x20DFAE51; // OK
-const uint64_t IR_PLAY_PAUSE     = 0x20DF0BF4; // Play
+const uint64_t IR_PLAY           = 0x20DF0BF4; // Play
+const uint64_t IR_PAUSE          = 0x20DF738C; // Pause
 const uint64_t IR_SLOWER         = 0x20DF5AA5; // Reverse
 const uint64_t IR_FASTER         = 0x20DFFD02; // Forward
 const uint64_t IR_LEFT           = 0x20DF04FB; // Previous
 const uint64_t IR_RIGHT          = 0x20DF6B94; // Right
+const uint64_t IR_RED            = 0x20DF4EB1; // Button "Red"
+const uint64_t IR_GREEN          = 0x20DF8E71; // Button "Green"
+const uint64_t IR_YELLOW         = 0x20DFC639; // Button "Yellow"
+const uint64_t IR_BLUE           = 0x20DF8679; // Button "Blue"
+const uint64_t IR_WHITE          = 0x20DF55AA; // Button "Info"
 
 // IR receiver library parameters
 const uint16_t IR_BUFFER_SIZE = 1024;
@@ -120,53 +137,65 @@ const uint8_t IR_MSG_TIMEOUT = 15;
 // -----------------------------------------------------------------------------
 
 // Internal button
-Button Btn(PIN_BUTTON);
+Button btn_(PIN_BUTTON);
 
 // IR receiver
-IRrecv IrRecv(PIN_IRRECV, IR_BUFFER_SIZE, IR_MSG_TIMEOUT, true);
+IRrecv irRecv_(PIN_IRRECV, IR_BUFFER_SIZE, IR_MSG_TIMEOUT, true);
 
 // Buffer for decoded IR command
-decode_results irCmd;
+decode_results irCmd_ = {};
 
 // IR command status
-bool irCmdAvailable = false; // True, if new IR code has been received and decoded
+bool irCmdAvailable_ = false; // True, if new IR code has been received and decoded
 
 // Last IR command received and decoded
-uint64_t irCmdValue = 0;
+uint64_t irCmdValue_ = 0;
 
 // Internal LED controller
-CRGB ledAtom[1];
+CRGB ledAtom_[1];
 
 // LED strip controller
-CRGB ledStrip[NUM_LEDS];
+CRGB ledStrip_[NUM_LEDS];
 
 // Sprite buffer
-t_LedSprite sprites[RENDER_SPRITES_NUM_SPRITES_MAX];
+t_LedSprite sprites_[RENDER_SPRITES_NUM_SPRITES_MAX];
 
-// System state
-t_State state = t_State::OFF;
+// Overall device state
+t_State deviceState_ = t_State::OFF;
 
-// Light mode
-t_LightMode lightMode = t_LightMode::CHASE;
-uint8_t renderCyclesHold = RENDER_CHASE_NUM_CYCLES_HOLD_INIT;
-
-// Cycle counter for led strip effects
-int cycleNr = 0;
-
-// Base hue for led strip effects
-uint8_t hueBase = 0;
+// Currently selected light effect
+t_LightMode lightMode_ = t_LightMode::SPARKLE;
 
 // Brightness factor for LED strip
-uint8_t brightness = BRIGHTNESS_OFF;
+uint8_t brightness_ = BRIGHTNESS_OFF;
 
-// Refresh of LED strip needed
-bool refreshNeeded = false;
+// Flag: refresh of LED strip needed
+bool refreshNeeded_ = false;
 
-// Color effect paused
-bool paused   = false;
+// Gradient, chase, sparkle, and sprite effect: Effect paused
+bool paused_   = false;
 
-// Color effect direction
-bool dirLeft  = true;
+// Gradient, chase, sparkle, and sprite effect: Number of cycles to hold each step
+uint8_t renderCyclesHold_ = RENDER_SPARKLE_NUM_CYCLES_HOLD_INIT;
+
+// Gradient, chase, sparkle, and sprite effect: Current cycle number
+int cycleNr_ = 0;
+
+// Gradient and chase effect: Current base hue value
+uint8_t hueBase_ = 0;
+
+// Chase effect: Moving direction
+bool dirLeft_  = true;
+
+// Sparkle effect: current color index
+uint8_t sparkleColorIdx_ = 0;
+
+// Sparkle effect: current lightness value
+uint8_t sparkleValue_ = RENDER_SPARKLE_LIGHTNESS_MIN;
+
+// Sparkle effect: current sparkle state
+int8_t sparkleState_ = 1;
+
 
 // --- Function declarations ---
 
@@ -180,8 +209,11 @@ void clearSprites();
 void showLeds()
 {
     FastLED.show();
-    refreshNeeded = false;
+    refreshNeeded_ = false;
 }
+
+// Led color for light effect "Constant"
+CRGB constantColor = RENDER_CONSTANT_COLOR_DEFAULT;
 
 /**
  * Led strip effect: Constant white light e.g. for reading.
@@ -189,13 +221,13 @@ void showLeds()
 void renderConstant()
 {
     // Do something only if there is a reason for refreshing such as changed brightness.
-    if (refreshNeeded)
+    if (refreshNeeded_)
     {
         // Update color of each LED 
         for (int ledNr = 0; ledNr < NUM_LEDS; ledNr++)
         {
-            // Update color of the current LED to white.
-            ledStrip[ledNr].setHSV(0, 0, 255);
+            // Update color of the current LED to chosen RGB value
+            ledStrip_[ledNr] = constantColor;
         }
     
         showLeds();
@@ -209,29 +241,29 @@ void renderConstant()
 void renderGradient()
 {
     // Update colors every n cycles (i.e. n procedure calls). Do not update colors if paused by user.
-    if (cycleNr == 0 && !paused)
+    if (cycleNr_ == 0 && !paused_)
     {
-        refreshNeeded = true;
+        refreshNeeded_ = true;
         
         // Update each color of each LED 
         for (int ledNr = 0; ledNr < NUM_LEDS; ledNr++)
         {
             // Update color of the current LED
-            ledStrip[ledNr].setHSV(hueBase, 255, 255);
+            ledStrip_[ledNr].setHSV(hueBase_, 255, 255);
         }
 
         // Cycle through color spectrum    
-        hueBase += RENDER_GRADIENT_HUE_STEP;
+        hueBase_ += RENDER_GRADIENT_HUE_STEP;
     }
 
     // Show in case something has changed such as brightness or colors
-    if (refreshNeeded)
+    if (refreshNeeded_)
     {
         showLeds();
     }
 
     // Increase the cycle number after each procedure call
-    cycleNr = (cycleNr + 1) % renderCyclesHold;
+    cycleNr_ = (cycleNr_ + 1) % renderCyclesHold_;
 }
 
 /**
@@ -241,42 +273,42 @@ void renderGradient()
 void renderChase()
 {
     // Update colors every n cycles (i.e. n procedure calls). Do not update colors if paused by user.
-    if (cycleNr == 0 && !paused)
+    if (cycleNr_ == 0 && !paused_)
     {
-        refreshNeeded = true;
+        refreshNeeded_ = true;
       
         // Color of first LED
-        uint8_t hueLed = hueBase;
+        uint8_t hueLed = hueBase_;
                 
         // Update each color of each LED 
         for (int ledNr = 0; ledNr < NUM_LEDS; ledNr++)
         {
             // Update color of the current LED
-            ledStrip[ledNr].setHSV(hueLed, 255, 255);
+            ledStrip_[ledNr].setHSV(hueLed, 255, 255);
     
             // Color of next LED
             hueLed += RENDER_CHASE_HUE_STEP;
         }
 
         // Cycle through color spectrum depending on the direction set by the user
-        if (dirLeft)
+        if (dirLeft_)
         {
-            hueBase += RENDER_CHASE_HUE_STEP;
+            hueBase_ += RENDER_CHASE_HUE_STEP;
         }
         else
         {
-            hueBase -= RENDER_CHASE_HUE_STEP;
+            hueBase_ -= RENDER_CHASE_HUE_STEP;
         }
     }
 
     // Show in case something has changed such as brightness or colors
-    if (refreshNeeded)
+    if (refreshNeeded_)
     {
         showLeds();
     }
 
     // Increase the cycle number after each procedure call
-    cycleNr = (cycleNr + 1) % renderCyclesHold;
+    cycleNr_ = (cycleNr_ + 1) % renderCyclesHold_;
 }
 
 /**
@@ -286,9 +318,9 @@ void renderChase()
 void renderSprite()
 {
     // Update colors every n cycles (i.e. n procedure calls). Do not update colors if paused by user.
-    if (cycleNr == 0 && !paused)
+    if (cycleNr_ == 0 && !paused_)
     {
-        refreshNeeded = true;
+        refreshNeeded_ = true;
 
         // Generate a new sprite randomly
         if (random(0, 100) < RENDER_SPRITES_SPAWN_RATE)
@@ -298,14 +330,14 @@ void renderSprite()
             sp.activateAt = -1;
             sp.pos = NUM_LEDS / 2;
             sp.vel = 2 * random(0, 2) - 1;
-            sp.color = CHSV(random(0, 255), random(128, 255), random(128, 255));
+            sp.color = CHSV(random(0, 256), random(128, 256), random(128, 256));
 
-            // Insert the new sprite a free position of the sprite array
+            // Insert the new sprite at a free position of the sprite array
             for (int i = 0; i < RENDER_SPRITES_NUM_SPRITES_MAX; i++)
             {
-                if (sprites[i].active == false)
+                if (sprites_[i].active == false)
                 {
-                    sprites[i] = sp;
+                    sprites_[i] = sp;
                     break;
                 }
             }
@@ -315,13 +347,83 @@ void renderSprite()
         drawAndUpdateSprites(0);
     }
 
-    if (refreshNeeded)
+    if (refreshNeeded_)
     {
         showLeds();
     }
 
     // Increase the cycle number after each procedure call
-    cycleNr = (cycleNr + 1) % renderCyclesHold;
+    cycleNr_ = (cycleNr_ + 1) % renderCyclesHold_;
+}
+
+/**
+ * Led strip effect: TBD
+ * User can adjust the speed.
+ */
+void renderSparkle()
+{
+    // Update colors every n cycles (i.e. n procedure calls). Do not update colors if paused by user.
+    if (cycleNr_ == 0 && !paused_)
+    {
+        refreshNeeded_ = true;
+
+        // Update lightness value
+        switch (sparkleState_)
+        {
+            case 1:
+                if (sparkleValue_ < 255 - RENDER_SPARKLE_LIGHTNESS_STEP)
+                {
+                    sparkleValue_ += RENDER_SPARKLE_LIGHTNESS_STEP;
+                }
+                else
+                {
+                    sparkleValue_ = 255;
+                    sparkleState_ = -1;
+                }
+                break;
+
+            case -1:
+                if (sparkleValue_ >= RENDER_SPARKLE_LIGHTNESS_MIN + RENDER_SPARKLE_LIGHTNESS_STEP)
+                {
+                    sparkleValue_ -= RENDER_SPARKLE_LIGHTNESS_STEP;
+                }
+                else
+                {
+                    sparkleValue_ = 0;
+                    sparkleState_ = 0;
+                }
+                break;
+
+            default:
+                sparkleValue_ = RENDER_SPARKLE_LIGHTNESS_MIN;
+                sparkleState_ = 1;
+                sparkleColorIdx_ = (sparkleColorIdx_ + 1) % 4;
+        }
+
+        
+        // Update all sprites
+        for (int ledNr = 0; ledNr < NUM_LEDS; ledNr++)
+        {
+            // Update color of the current LED
+            if (ledNr % 4 == sparkleColorIdx_)
+            {
+                ledStrip_[ledNr] = CHSV(SPARKLE_COLOR_HUE[sparkleColorIdx_], SPARKLE_COLOR_SAT[sparkleColorIdx_], sparkleValue_);
+            }
+            else
+            {
+                ledStrip_[ledNr] = CHSV(0, 0, 0);
+            }
+        }
+
+    }
+
+    if (refreshNeeded_)
+    {
+        showLeds();
+    }
+
+    // Increase the cycle number after each procedure call
+    cycleNr_ = (cycleNr_ + 1) % renderCyclesHold_;
 }
 
 /**
@@ -368,21 +470,24 @@ void drawAndUpdateSprites(uint32_t stepNr)
     for (int k = 0; k < RENDER_SPRITES_NUM_SPRITES_MAX; k++)
     {
         // Activate sprites based on current step number
-        if (sprites[k].activateAt == stepNr)
-            sprites[k].active = true;
+        if (sprites_[k].activateAt == stepNr)
+            sprites_[k].active = true;
 
-        if (sprites[k].active)
+        if (sprites_[k].active)
         {
             // Set led colors based on active sprites
-            if (sprites[k].pos >= 0 && sprites[k].pos < NUM_LEDS)
-                ledStrip[sprites[k].pos] = sprites[k].color;
+            if (sprites_[k].pos >= 0 && sprites_[k].pos < NUM_LEDS)
+                ledStrip_[sprites_[k].pos] = sprites_[k].color;
 
             // Move sprites
-            sprites[k].pos += sprites[k].vel;
+            sprites_[k].pos += sprites_[k].vel;
+
+            // Scale down lightness to approx 90% of its current value, i.e. 230/256
+            sprites_[k].color.nscale8_video(230);
 
             // Deactivate sprites that moved outside the led strip
-            if (sprites[k].pos < 0 || sprites[k].pos >= NUM_LEDS)
-                sprites[k].active = false;
+            if (sprites_[k].pos < 0 || sprites_[k].pos >= NUM_LEDS)
+                sprites_[k].active = false;
         }
     }
 }
@@ -396,7 +501,7 @@ void clearLedStrip()
     for (int ledNr = 0; ledNr < NUM_LEDS; ledNr++)
     {
         // Update color of the current LED
-        ledStrip[ledNr] = CRGB(0, 0, 0);
+        ledStrip_[ledNr] = CRGB(0, 0, 0);
     }
 }
 
@@ -406,47 +511,47 @@ void clearLedStrip()
 void startupAnimation()
 {
     // Define a set of sprites
-    sprites[0].active = true;
-    sprites[0].activateAt = 0;
-    sprites[0].pos = NUM_LEDS / 2;
-    sprites[0].vel = 0;
-    sprites[0].color = CRGB(255, 255, 0);
+    sprites_[0].active = true;
+    sprites_[0].activateAt = 0;
+    sprites_[0].pos = NUM_LEDS / 2;
+    sprites_[0].vel = 0;
+    sprites_[0].color = CRGB(255, 255, 0);
     
-    sprites[1].active = false;
-    sprites[1].activateAt = 5;
-    sprites[1].pos = NUM_LEDS / 2 - 1;
-    sprites[1].vel = -1;
-    sprites[1].color = CRGB(32, 32, 128);
+    sprites_[1].active = false;
+    sprites_[1].activateAt = 5;
+    sprites_[1].pos = NUM_LEDS / 2 - 1;
+    sprites_[1].vel = -1;
+    sprites_[1].color = CRGB(32, 32, 128);
     
-    sprites[2].active = false;
-    sprites[2].activateAt = 5;
-    sprites[2].pos = NUM_LEDS / 2 + 1;
-    sprites[2].vel = +1;
-    sprites[2].color = CRGB(32, 32, 128);
+    sprites_[2].active = false;
+    sprites_[2].activateAt = 5;
+    sprites_[2].pos = NUM_LEDS / 2 + 1;
+    sprites_[2].vel = +1;
+    sprites_[2].color = CRGB(32, 32, 128);
     
-    sprites[3].active = false;
-    sprites[3].activateAt = 10;
-    sprites[3].pos = NUM_LEDS / 2 - 1;
-    sprites[3].vel = -1;
-    sprites[3].color = CRGB(128, 0, 0);
+    sprites_[3].active = false;
+    sprites_[3].activateAt = 10;
+    sprites_[3].pos = NUM_LEDS / 2 - 1;
+    sprites_[3].vel = -1;
+    sprites_[3].color = CRGB(128, 0, 0);
     
-    sprites[4].active = false;
-    sprites[4].activateAt = 10;
-    sprites[4].pos = NUM_LEDS / 2 + 1;
-    sprites[4].vel = +1;
-    sprites[4].color = CRGB(128, 0, 0);
+    sprites_[4].active = false;
+    sprites_[4].activateAt = 10;
+    sprites_[4].pos = NUM_LEDS / 2 + 1;
+    sprites_[4].vel = +1;
+    sprites_[4].color = CRGB(128, 0, 0);
 
-    sprites[5].active = false;
-    sprites[5].activateAt = 15;
-    sprites[5].pos = NUM_LEDS / 2 - 1;
-    sprites[5].vel = -1;
-    sprites[5].color = CRGB(0, 128, 0);
+    sprites_[5].active = false;
+    sprites_[5].activateAt = 15;
+    sprites_[5].pos = NUM_LEDS / 2 - 1;
+    sprites_[5].vel = -1;
+    sprites_[5].color = CRGB(0, 128, 0);
     
-    sprites[6].active = false;
-    sprites[6].activateAt = 15;
-    sprites[6].pos = NUM_LEDS / 2 + 1;
-    sprites[6].vel = +1;
-    sprites[6].color = CRGB(0, 128, 0);
+    sprites_[6].active = false;
+    sprites_[6].activateAt = 15;
+    sprites_[6].pos = NUM_LEDS / 2 + 1;
+    sprites_[6].vel = +1;
+    sprites_[6].color = CRGB(0, 128, 0);
 
     // Do the sprite animation
     for (int stepNr = 0; stepNr < 30; stepNr++)
@@ -457,14 +562,14 @@ void startupAnimation()
     }
 
     // Fade out
-    fadeBrightness(brightness, 0, 50);
+    fadeBrightness(brightness_, 0, 50);
 
     // Invalidate all sprites and clear led strip
     clearSprites();
     clearLedStrip();
 
     // Reset led strip to its actual brightness
-    FastLED.setBrightness(brightness);
+    FastLED.setBrightness(brightness_);
     FastLED.show();
 }
 
@@ -476,8 +581,326 @@ void clearSprites()
     // Set all sprites to inactive
     for (int i = 0; i < RENDER_SPRITES_NUM_SPRITES_MAX; i++)
     {
-        sprites[i].active = false;
-        sprites[i].activateAt = -1;
+        sprites_[i].active = false;
+        sprites_[i].activateAt = -1;
+    }
+}
+
+/**
+ * Helper function to read and preprocess IR commands.
+ */
+void readIrCommand() {
+    irCmdAvailable_ = irRecv_.decode(&irCmd_);
+
+    // Preprocessing of the IR command
+    if (irCmdAvailable_)
+    {
+        // Is it a repetition of the previous IR command?
+        if (irCmd_.repeat)
+        {
+            // Is repetition of the previous command allowed?
+            bool irCmdRepeatable =
+                (irCmdValue_ == IR_BRIGHTNESS_DEC) ||
+                (irCmdValue_ == IR_BRIGHTNESS_INC) ||
+                (irCmdValue_ == IR_SLOWER) ||
+                (irCmdValue_ == IR_FASTER);
+
+            // Ignore IR repeat command if repetition of the last command is not supported
+            if (!irCmdRepeatable)
+            {
+                irCmdAvailable_ = false;
+                irCmdValue_ = 0x0;
+            }
+        }
+        else {
+            // No repetition: retrieve the IR command
+            irCmdValue_ = irCmd_.value;
+        }
+        
+        irRecv_.resume();
+
+        if (DEBUG_ON)
+        {
+            Serial.print("IR: ");
+            Serial.println((unsigned long) irCmd_.value, HEX);
+        }
+    }
+}
+
+/**
+ * Helper function that adjusts color effects based on user input, mainly IR commands.
+ */
+void processUserInputColorEffects() {
+    switch (irCmdValue_) {
+              
+        case IR_BRIGHTNESS_INC:
+            brightness_ += BRIGHTNESS_STEP;
+            if (brightness_ > BRIGHTNESS_MAX) brightness_ = BRIGHTNESS_MAX;
+            FastLED.setBrightness(brightness_);
+            refreshNeeded_ = true;
+
+            if (DEBUG_ON)
+            {
+                Serial.print("Brightness+: ");
+                Serial.println(brightness_);
+            }
+            
+            break;
+        
+        case IR_BRIGHTNESS_DEC:
+            brightness_ -= BRIGHTNESS_STEP;
+            if (brightness_ < BRIGHTNESS_MIN) brightness_ = BRIGHTNESS_MIN;
+            FastLED.setBrightness(brightness_);
+            refreshNeeded_ = true;
+
+            if (DEBUG_ON)
+            {
+                Serial.print("Brightness-: ");
+                Serial.println(brightness_);
+            }
+            
+            break;
+
+        case IR_SLOWER:
+            renderCyclesHold_ += RENDER_NUM_CYCLES_HOLD_STEP;
+            if (renderCyclesHold_ > RENDER_NUM_CYCLES_HOLD_MAX) renderCyclesHold_ = RENDER_NUM_CYCLES_HOLD_MAX;
+
+            if (DEBUG_ON)
+            {
+                Serial.print("Speed-: ");
+                Serial.println(0.001 * renderCyclesHold_ * TIME_CYCLE);
+            }
+            
+            break;
+
+        case IR_FASTER:
+            renderCyclesHold_ -= RENDER_NUM_CYCLES_HOLD_STEP;
+            if (renderCyclesHold_ < RENDER_NUM_CYCLES_HOLD_MIN) renderCyclesHold_ = RENDER_NUM_CYCLES_HOLD_MIN;
+            paused_ = false;
+
+            if (DEBUG_ON)
+            {
+                Serial.print("Speed+: ");
+                Serial.println(0.001 * renderCyclesHold_ * TIME_CYCLE);
+            }
+            
+            break;
+
+        case IR_LEFT:
+            if (lightMode_ == t_LightMode::CHASE && (!dirLeft_ || paused_))
+            {                   
+                dirLeft_ = true;
+                paused_ = false;
+                cycleNr_ = 0;
+
+                if (DEBUG_ON)
+                {
+                    Serial.println("Direction L");
+                }
+            }
+            
+            break;
+
+        case IR_RIGHT:
+            if (lightMode_ == t_LightMode::CHASE && (dirLeft_ || paused_))
+            {                   
+                dirLeft_ = false;
+                paused_ = false;
+                cycleNr_ = 0;
+
+                if (DEBUG_ON)
+                {
+                    Serial.println("Direction R");
+                }
+            }
+            
+            break;
+        
+        case IR_MODE_CHANGE:
+
+            refreshNeeded_ = true;
+            paused_ = false;
+            
+            switch (lightMode_) {
+                case t_LightMode::CONSTANT:
+                    lightMode_ = t_LightMode::GRADIENT;
+                    renderCyclesHold_ = RENDER_GRADIENT_NUM_CYCLES_HOLD_INIT;
+                    cycleNr_ = 0;
+                    hueBase_ = 0;
+                    break;
+            
+                case t_LightMode::GRADIENT:
+                    lightMode_ = t_LightMode::CHASE;
+                    renderCyclesHold_ = RENDER_CHASE_NUM_CYCLES_HOLD_INIT;
+                    cycleNr_ = 0;
+                    hueBase_ = 0;
+                    break;
+
+                case t_LightMode::CHASE:
+                    lightMode_ = t_LightMode::SPRITE;
+                    renderCyclesHold_ = RENDER_SPRITES_NUM_CYCLES_HOLD_INIT;
+                    cycleNr_ = 0;
+                    break;
+
+                case t_LightMode::SPRITE:
+                    lightMode_ = t_LightMode::SPARKLE;
+                    cycleNr_ = 0;
+                    sparkleValue_ = RENDER_SPARKLE_LIGHTNESS_MIN;
+                    sparkleColorIdx_ = 0;
+                    sparkleState_ = 1;
+                    break;
+
+                case t_LightMode::SPARKLE:
+                    lightMode_ = t_LightMode::CONSTANT;
+                    break;
+            }
+
+            if (DEBUG_ON)
+            {
+                Serial.print("Light mode: ");
+                Serial.println(lightMode_);
+            }
+            
+            break;
+
+        case IR_PLAY:
+            if ( (lightMode_ == t_LightMode::GRADIENT) ||
+                    (lightMode_ == t_LightMode::CHASE) ||
+                    (lightMode_ == t_LightMode::SPRITE) ||
+                    (lightMode_ == t_LightMode::SPARKLE) )
+            {
+                paused_ = false;
+            }
+
+            if (DEBUG_ON)
+            {
+                Serial.print("Pause: ");
+                Serial.println(paused_);
+            }
+            
+            break;
+        
+        case IR_PAUSE:
+            if ( (lightMode_ == t_LightMode::GRADIENT) ||
+                    (lightMode_ == t_LightMode::CHASE) ||
+                    (lightMode_ == t_LightMode::SPRITE) ||
+                    (lightMode_ == t_LightMode::SPARKLE) )
+            {
+                paused_ = true;
+            }
+
+            if (DEBUG_ON)
+            {
+                Serial.print("Pause: ");
+                Serial.println(paused_);
+            }
+            
+            break;
+
+        case IR_RED:
+            if (lightMode_ == t_LightMode::CONSTANT)
+            {
+                constantColor.setRGB(255, 0, 0);
+                refreshNeeded_ = true;
+            }
+            break;
+
+        case IR_GREEN:
+            if (lightMode_ == t_LightMode::CONSTANT)
+            {
+                constantColor.setRGB(0, 255, 0);
+                refreshNeeded_ = true;
+            }
+            break;
+
+        case IR_YELLOW:
+            if (lightMode_ == t_LightMode::CONSTANT)
+            {
+                constantColor.setRGB(255, 255, 0);
+                refreshNeeded_ = true;
+            }
+            break;
+
+        case IR_BLUE:
+            if (lightMode_ == t_LightMode::CONSTANT)
+            {
+                constantColor.setRGB(0, 0, 255);
+                refreshNeeded_ = true;
+            }
+            break;
+
+        case IR_WHITE:
+            if (lightMode_ == t_LightMode::CONSTANT)
+            {
+                constantColor.setRGB(255, 255, 255);
+                refreshNeeded_ = true;
+            }
+            break;
+
+    }
+}
+
+void switchDeviceState()
+{
+    switch (deviceState_)
+    {
+        case t_State::OFF:
+            if (DEBUG_ON)
+                Serial.println("Switching to state 'ON'");
+            
+            // Switch on
+            deviceState_ = t_State::ON;
+
+            FastLED.clear();
+            brightness_ = BRIGHTNESS_ON;
+            FastLED.setBrightness(brightness_);
+            ledAtom_[0] = COLOR_ON;
+
+            refreshNeeded_ = true;
+            paused_ = false;
+            cycleNr_ = 0;
+            hueBase_ = 0;
+
+            sparkleValue_ = RENDER_SPARKLE_LIGHTNESS_MIN;
+            sparkleColorIdx_ = 0;
+            sparkleState_ = 1;
+
+            break;
+
+        case t_State::ON:
+            if (DEBUG_ON)
+                Serial.println("Switching to state 'ECO'");
+        
+            // Switch to Eco
+            deviceState_ = t_State::ECO;
+
+            FastLED.clear();
+            brightness_ = BRIGHTNESS_ECO;
+            FastLED.setBrightness(brightness_);
+            ledAtom_[0] = COLOR_ECO;
+
+            refreshNeeded_ = true;
+            paused_ = false;
+            cycleNr_ = 0;
+            hueBase_ = 0;
+
+            break;
+    
+        case t_State::ECO:
+            if (DEBUG_ON)
+                Serial.println("Switching to state 'OFF'");
+        
+            // Switch off
+            deviceState_ = t_State::OFF;
+
+            fadeBrightness(brightness_, 0, 50);
+
+            FastLED.clear();
+            brightness_ = BRIGHTNESS_OFF;
+            FastLED.setBrightness(brightness_);
+            ledAtom_[0] = COLOR_OFF;
+            FastLED.show();
+            break;
     }
 }
 
@@ -500,18 +923,18 @@ void setup()
         Serial.println(RENDER_GRADIENT_HUE_STEP);
     }
   
-    Btn.begin();  // initialize the button object
+    btn_.begin();  // initialize the button object
     
-    FastLED.addLeds<NEOPIXEL, PIN_LEDATOM>(ledAtom, 1);
-    FastLED.addLeds<NEOPIXEL, PIN_LEDSTRIP>(ledStrip, NUM_LEDS);
+    FastLED.addLeds<NEOPIXEL, PIN_LEDATOM>(ledAtom_, 1);
+    FastLED.addLeds<NEOPIXEL, PIN_LEDSTRIP>(ledStrip_, NUM_LEDS);
     FastLED.clear();
-    FastLED.setBrightness(brightness);
-    ledAtom[0].setRGB(COLOR_OFF[0], COLOR_OFF[1], COLOR_OFF[2]);
+    FastLED.setBrightness(brightness_);
+    ledAtom_[0] = COLOR_OFF;
     FastLED.show();
 
     startupAnimation();
     
-    IrRecv.enableIRIn(); // Switch on IR receiver after initialization
+    irRecv_.enableIRIn(); // Switch on IR receiver after initialization
 }
 
 // -----------------------------------------------------------------------------
@@ -520,254 +943,36 @@ void setup()
 
 void loop() {
 
-    /* ---------- Process power on/off commands ---------- */
-    
-    // Read the button state
-    Btn.read();
+    // Read IR command
+    readIrCommand();
 
+    // Flag to indicate that the IR button for the Off/On/Eco state has been activated
     bool irCmdOnOff = false;
 
-    // Determine the IR command state
-    irCmdAvailable = IrRecv.decode(&irCmd);
-
-    if (irCmdAvailable)
+    if (irCmdAvailable_)
     {
-        if (irCmd.repeat) // Is it a repetition of the previous IR command?
-        {
-            // Is repetition of the previous command allowed?
-            bool irCmdRepeatable = (irCmdValue == IR_BRIGHTNESS_DEC) || (irCmdValue == IR_BRIGHTNESS_INC) ||
-                 (irCmdValue == IR_SLOWER) || (irCmdValue == IR_FASTER);
-
-            if (!irCmdRepeatable)
-            {
-                irCmdAvailable = false;
-                irCmdValue = 0x0;
-            }
-        }
-        else {
-            // No repetition: retrieve the IR command
-            irCmdValue = irCmd.value;
-            irCmdOnOff = (irCmdValue == IR_ON_OFF);
-        }
-        
-        IrRecv.resume();
-
-        if (DEBUG_ON)
-        {
-            Serial.print("IR: ");
-            Serial.println((unsigned long) irCmd.value, HEX);
-        }
+        irCmdOnOff = (irCmdValue_ == IR_ON_OFF);
     }
+
+    // Read the device button state
+    btn_.read();
     
-    // Process events "button released" or "IR on/off" respectively
-    if (Btn.wasReleased() || irCmdOnOff)
+    // Process change of the device state (Off/On/Eco)
+    if (btn_.wasReleased() || irCmdOnOff)
     {
-        switch (state)
-        {
-            case t_State::OFF:
-                if (DEBUG_ON)
-                    Serial.println("Switching to state 'ON'");
-                
-                // Switch on
-                state = t_State::ON;
-
-                FastLED.clear();
-                brightness = BRIGHTNESS_ON;
-                FastLED.setBrightness(brightness);
-                ledAtom[0].setRGB(COLOR_ON[0], COLOR_ON[1], COLOR_ON[2]);
-
-                refreshNeeded = true;
-                paused = false;
-                cycleNr = 0;
-                hueBase = 0;
-
-                break;
-
-            case t_State::ON:
-                if (DEBUG_ON)
-                    Serial.println("Switching to state 'ECO'");
-            
-                // Switch to Eco
-                state = t_State::ECO;
-
-                FastLED.clear();
-                brightness = BRIGHTNESS_ECO;
-                FastLED.setBrightness(brightness);
-                ledAtom[0].setRGB(COLOR_ECO[0], COLOR_ECO[1], COLOR_ECO[2]);
-
-                refreshNeeded = true;
-                paused = false;
-                cycleNr = 0;
-                hueBase = 0;
-
-                break;
-        
-            case t_State::ECO:
-                if (DEBUG_ON)
-                    Serial.println("Switching to state 'OFF'");
-            
-                // Switch off
-                state = t_State::OFF;
-
-                fadeBrightness(brightness, 0, 50);
-
-                FastLED.clear();
-                brightness = BRIGHTNESS_OFF;
-                FastLED.setBrightness(brightness);
-                ledAtom[0].setRGB(COLOR_OFF[0], COLOR_OFF[1], COLOR_OFF[2]);
-                FastLED.show();
-                break;
-        }
+        switchDeviceState();
     }
 
     // Update LED strip colors while system is in state ON or ECO
-    if (state == t_State::ON || state == t_State::ECO)
+    if (deviceState_ == t_State::ON || deviceState_ == t_State::ECO)
     {
         /* ---------- Process IR commands for color effects ---------- */
-        if (irCmdAvailable) {
-          
-            switch (irCmdValue) {
-              
-                case IR_BRIGHTNESS_INC:
-                   brightness += BRIGHTNESS_STEP;
-                   if (brightness > BRIGHTNESS_MAX) brightness = BRIGHTNESS_MAX;
-                   FastLED.setBrightness(brightness);
-                   refreshNeeded = true;
-
-                   if (DEBUG_ON)
-                   {
-                      Serial.print("Brightness+: ");
-                      Serial.println(brightness);
-                   }
-                   
-                   break;
-                
-                case IR_BRIGHTNESS_DEC:
-                   brightness -= BRIGHTNESS_STEP;
-                   if (brightness < BRIGHTNESS_MIN) brightness = BRIGHTNESS_MIN;
-                   FastLED.setBrightness(brightness);
-                   refreshNeeded = true;
-
-                   if (DEBUG_ON)
-                   {
-                      Serial.print("Brightness-: ");
-                      Serial.println(brightness);
-                   }
-                   
-                   break;
-
-                case IR_SLOWER:
-                   renderCyclesHold += RENDER_NUM_CYCLES_HOLD_STEP;
-                   if (renderCyclesHold > RENDER_NUM_CYCLES_HOLD_MAX) renderCyclesHold = RENDER_NUM_CYCLES_HOLD_MAX;
-
-                   if (DEBUG_ON)
-                   {
-                      Serial.print("Speed-: ");
-                      Serial.println(0.001 * renderCyclesHold * TIME_CYCLE);
-                   }
-                   
-                   break;
-
-                case IR_FASTER:
-                   renderCyclesHold -= RENDER_NUM_CYCLES_HOLD_STEP;
-                   if (renderCyclesHold < RENDER_NUM_CYCLES_HOLD_MIN) renderCyclesHold = RENDER_NUM_CYCLES_HOLD_MIN;
-                   paused = false;
-
-                   if (DEBUG_ON)
-                   {
-                      Serial.print("Speed+: ");
-                      Serial.println(0.001 * renderCyclesHold * TIME_CYCLE);
-                   }
-                   
-                   break;
-
-                case IR_LEFT:
-                   if (lightMode == t_LightMode::CHASE && (!dirLeft || paused))
-                   {                   
-                      dirLeft = true;
-                      paused = false;
-                      cycleNr = 0;
-
-                      if (DEBUG_ON)
-                      {
-                          Serial.println("Direction L");
-                      }
-                   }
-                   
-                   break;
-
-                case IR_RIGHT:
-                   if (lightMode == t_LightMode::CHASE && (dirLeft || paused))
-                   {                   
-                      dirLeft = false;
-                      paused = false;
-                      cycleNr = 0;
-
-                      if (DEBUG_ON)
-                      {
-                          Serial.println("Direction R");
-                      }
-                   }
-                   
-                   break;
-                
-                case IR_MODE_CHANGE:
-
-                    refreshNeeded = true;
-                    paused = false;
-                    
-                    switch (lightMode) {
-                        case t_LightMode::CONSTANT:
-                            lightMode = t_LightMode::GRADIENT;
-                            renderCyclesHold = RENDER_GRADIENT_NUM_CYCLES_HOLD_INIT;
-                            cycleNr = 0;
-                            hueBase = 0;
-                            break;
-                    
-                        case t_LightMode::GRADIENT:
-                            lightMode = t_LightMode::CHASE;
-                            renderCyclesHold = RENDER_CHASE_NUM_CYCLES_HOLD_INIT;
-                            cycleNr = 0;
-                            hueBase = 0;
-                            break;
-      
-                        case t_LightMode::CHASE:
-                            lightMode = t_LightMode::SPRITE;
-                            renderCyclesHold = RENDER_SPRITES_NUM_CYCLES_HOLD_INIT;
-                            cycleNr = 0;
-                            break;
-
-                        case t_LightMode::SPRITE:
-                            lightMode = t_LightMode::CONSTANT;
-                            break;
-                    }
-
-                    if (DEBUG_ON)
-                    {
-                        Serial.print("Light mode: ");
-                        Serial.println(lightMode);
-                    }
-                    
-                    break;
-
-                case IR_PLAY_PAUSE:
-                    if ( (lightMode == t_LightMode::GRADIENT) || (lightMode == t_LightMode::CHASE) || (lightMode == t_LightMode::SPRITE))
-                    {
-                        paused = !paused;
-                    }
-
-                    if (DEBUG_ON)
-                    {
-                        Serial.print("Pause: ");
-                        Serial.println(paused);
-                    }
-                    
-                    break;
-            }
+        if (irCmdAvailable_) {
+            processUserInputColorEffects();
         }
 
         // Update colors of led strip according the active color effect and user settings
-        switch (lightMode) {
+        switch (lightMode_) {
             case t_LightMode::CONSTANT:
                 renderConstant();
                 break;
@@ -782,6 +987,10 @@ void loop() {
 
             case t_LightMode::SPRITE:
                 renderSprite();
+                break;
+
+            case t_LightMode::SPARKLE:
+                renderSparkle();
                 break;
         }
 
